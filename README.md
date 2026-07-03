@@ -17,13 +17,13 @@
 
 ## 📖 Visão Geral
 
-O **Industrial Intelligence Ecosystem** é uma plataforma multi-agente assíncrona baseada em eventos, projetada sob medida para as necessidades do **Centro de Inteligência Industrial**. Ele funciona como um **Data Steward Autônomo** que absorve perguntas complexas em linguagem natural, automatiza o cruzamento de dados e gera relatórios socioeconômicos estruturados.
+O **Industrial Intelligence Ecosystem** é uma plataforma multi-agente assíncrona baseada em eventos, projetada sob medida para as necessidades de um **Centro de Inteligência Industrial**. Ele funciona como um **Data Steward Autônomo** que absorve perguntas complexas em linguagem natural, automatiza o cruzamento de dados e gera relatórios socioeconômicos estruturados.
 
 ### 🎯 O Impacto no Negócio (Blindagem de Sprints)
 Em estruturas corporativas de dados, economistas e tomadores de decisão demandam constantemente análises *ad-hoc*, consultas de emprego e forecasts de mercado. Essa demanda pulverizada costuma interromper e estrangular as sprints do time técnico de engenharia de dados. 
 
 Este ecossistema resolve o problema atuando na ponta de autoatendimento:
-- **Redução de até 90%** no backlog de demandas analíticas *ad-hoc*.
+- **Redução** no backlog de demandas analíticas *ad-hoc*.
 - **Blindagem do time de dados**, permitindo que engenheiros foquem em infraestrutura estrutural enquanto a IA gera relatórios validados e auditados.
 - **Rigor Técnico e Governança**: Todo relatório passa por um auditor matemático e contextual automático antes de ser publicado.
 
@@ -76,11 +76,11 @@ A orquestração é modelada como um **Grafo Orientado a Eventos** utilizando o 
 
 ## 👥 Os Agentes Especialistas e Blindagem Contra Falhas
 
-### 1. 🧠 OrchestratorAgent (Manager & Plan)
+### 1. 🧠 OrchestratorAgent (Gerencia e Planeja)
 - **Função**: Ponto de entrada do sistema. Interpreta a consulta em linguagem natural do usuário, cria o plano de tarefas estruturado e dispara os eventos em paralelo para os especialistas.
 
-### 2. 🗄️ SQLSpecialistAgent (Text-to-SQL Seguro)
-- **Função**: Traduz requisitos de negócio para queries SQL limpas que rodam sobre a base histórica do CAGED/IBGE (`emprego_formal`).
+### 2. 🗄️ SQLSpecialistAgent (Text-to-SQL)
+- **Função**: Traduz requisitos de negócio para queries SQL limpas que rodam sobre uma base histórica do CAGED/IBGE (`emprego_formal`).
 - **Blindagem Técnico-Arquitetural**: O prompt do agente possui o DDL explícito e mockado em Markdown para guiar o Text-to-SQL sem erros de colunas.
 - *Nota de Produção*: Em ambiente corporativo real no Centro de Inteligência, este agente utiliza uma ferramenta de **Schema Retrieval dinâmica** para ler os metadados ativos do banco de dados (PostgreSQL/Oracle) de forma segura.
 
@@ -92,7 +92,7 @@ A orquestração é modelada como um **Grafo Orientado a Eventos** utilizando o 
 - **Função**: Gera projeções de massa salarial e cenários (Base, Otimista, Pessimista) para o setor selecionado.
 - **ML vs. Econometria**: O componente prioriza modelos econométricos clássicos de séries temporais (como **SARIMAX** e **Prophet** via `statsmodels`), usando modelos de Machine Learning (**XGBoost/LightGBM**) de forma complementar para capturar resíduos e relações não-lineares. Essa abordagem atende à exigência de interpretabilidade e rigor estatístico demandados pelo corpo de economistas seniores da instituição.
 
-### ⚖️ ConsistencyAuditorAgent (O Auditor Anti-Frágil)
+### ⚖️ ConsistencyAuditorAgent (O Auditor)
 - **Função**: O nó crítico de Quality Assurance (QA) que valida as respostas.
 - **Validação Híbrida (Python + LLM)**: Para evitar alucinações comuns de LLM avaliando LLM, o Auditor executa **primeiramente validações programáticas determinísticas em Python puro** (validando saldo matemático `admissões - desligamentos == saldo`, paridade de UF consultada e contradições lógicas flagrantes). Somente se as validações programáticas passarem, a LLM entra em cena para consolidar a redação final do relatório. Se falhar, o Auditor devolve o feedback de refatoração reiniciando o fluxo.
 
