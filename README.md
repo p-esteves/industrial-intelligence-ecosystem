@@ -11,6 +11,10 @@
 [![LlamaIndex Workflows](https://img.shields.io/badge/LlamaIndex-Workflows-orange.svg)](https://llamaindex.ai)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg)](https://docker.com)
 
+<br>
+
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://industrial-intelligence-ecosystem.streamlit.app/)
+
 </div>
 
 ---
