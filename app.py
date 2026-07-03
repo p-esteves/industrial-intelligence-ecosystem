@@ -14,7 +14,10 @@ from dotenv import load_dotenv
 sys.path.append(str(Path(__file__).resolve().parent))
 
 import nest_asyncio
-nest_asyncio.apply()
+try:
+    nest_asyncio.apply()
+except ValueError:
+    pass  # Fix for Streamlit Cloud uvloop crash
 
 from config import get_settings
 from workflow.workflow import IndustrialMultiAgentWorkflow
