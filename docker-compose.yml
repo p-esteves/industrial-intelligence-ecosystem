@@ -1,0 +1,83 @@
+# ============================================================
+# Industrial Multi-Agent Ecosystem — Docker Compose Orchestration
+# ============================================================
+
+services:
+  # ── Backend API (FastAPI + LlamaIndex Workflows) ───────────
+  backend_api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mas_backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./.env:/app/.env:ro
+    environment:
+      - OLLAMA_BASE_URL=http://ollama_service:11434
+      - BACKEND_URL=http://backend_api:8000
+    env_file:
+      - .env
+    depends_on:
+      ollama_service:
+        condition: service_healthy
+    networks:
+      - mas_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ── Frontend UI (Streamlit) ────────────────────────────────
+  frontend_ui:
+    build:
+      context: .
+      dockerfile: Dockerfile.streamlit
+    container_name: mas_frontend
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - ./.env:/app/.env:ro
+    environment:
+      - BACKEND_URL=http://backend_api:8000
+      - OLLAMA_BASE_URL=http://ollama_service:11434
+    depends_on:
+      backend_api:
+        condition: service_started
+    networks:
+      - mas_network
+    restart: unless-stopped
+
+  # ── Ollama Service (Local LLM) ────────────────────────────
+  ollama_service:
+    image: ollama/ollama:latest
+    container_name: mas_ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - mas_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+# ── Networks ─────────────────────────────────────────────────
+networks:
+  mas_network:
+    driver: bridge
+    name: mas_network
+
+# ── Volumes ──────────────────────────────────────────────────
+volumes:
+  ollama_data:
+    name: mas_ollama_models
