@@ -65,33 +65,57 @@ class ReportAgent:
             },
         )
 
-        llm_provider_used = "ollama"
+        llm_provider_used = settings.llm_provider
         report_text = ""
         recommendations: list[str] = []
 
-        # Attempt local LLM call via Ollama
-        if settings.llm_provider == "ollama":
-            try:
-                report_text, recommendations = await cls._query_ollama(
-                    anomalies=anomalies,
-                    rag_context=rag_context,
-                    base_url=settings.ollama_base_url,
-                    model=settings.ollama_model,
-                )
-            except Exception as exc:
-                logger.warning(
-                    f"Ollama service unreachable ({exc}). Activating graceful degradation fallback.",
-                    extra={
-                        "event_type": "agent_decision",
-                        "agent": "ReportAgent",
-                        "action": "GRACEFUL_DEGRADATION_FALLBACK",
-                        "reason": str(exc),
-                    },
-                )
-                LLM_FALLBACK_COUNT.labels(reason="ollama_unreachable").inc()
-                llm_provider_used = "fallback_rule_engine"
-                report_text, recommendations = cls._generate_fallback_report(anomalies, rag_context)
-        else:
+        anomaly_lines = [
+            f"- {a.description if hasattr(a, 'description') else a.get('description', '')}"
+            for a in anomalies[:10]
+        ]
+        anomaly_str = "\n".join(anomaly_lines) if anomaly_lines else "Nenhuma anomalia crítica."
+
+        try:
+            from agents.factory import get_llm, llm_achat_with_retry
+            from llama_index.core.llms import ChatMessage, MessageRole
+
+            llm = get_llm()
+            prompt = f"""Você é um especialista em inteligência industrial e economia brasileira (CAGED/IBGE).
+Sua tarefa é analisar as seguintes anomalias estatísticas detectadas na indústria e gerar um relatório executivo estruturado em linguagem natural (Português).
+
+ANOMALIAS DETECTADAS:
+{anomaly_str}
+
+CONTEXTO DE DIRETRIZES INDUSTRIAIS (RAG):
+{rag_context if rag_context else "Nenhum contexto RAG adicional disponível."}
+
+FORMATO DO RELATÓRIO REQUERIDO:
+1. Resumo Executivo das Anomalias
+2. Análise de Causa Raiz e Impacto Setorial
+3. Recomendações Estratégicas e Mitigação
+"""
+            messages = [
+                ChatMessage(role=MessageRole.SYSTEM, content="Você é um especialista em inteligência industrial e economia brasileira."),
+                ChatMessage(role=MessageRole.USER, content=prompt)
+            ]
+            response = await llm_achat_with_retry(llm, messages)
+            report_text = response.message.content.strip()
+            recommendations = [
+                "Acompanhamento contínuo dos setores afetados via CAGED mensal",
+                "Implementação de comitê de crise para retenção de postos de trabalho",
+                "Revisão de incentivos fiscais estaduais para polos em desaceleração",
+            ]
+        except Exception as exc:
+            logger.warning(
+                f"LLM service unreachable ({exc}). Activating graceful degradation fallback.",
+                extra={
+                    "event_type": "agent_decision",
+                    "agent": "ReportAgent",
+                    "action": "GRACEFUL_DEGRADATION_FALLBACK",
+                    "reason": str(exc),
+                },
+            )
+            LLM_FALLBACK_COUNT.labels(reason="llm_unreachable").inc()
             llm_provider_used = "fallback_rule_engine"
             report_text, recommendations = cls._generate_fallback_report(anomalies, rag_context)
 
