@@ -3,7 +3,7 @@
 # ============================================================
 
 services:
-  # ── Backend API (FastAPI + LlamaIndex Workflows) ───────────
+  # ── Backend API (FastAPI REST Server + Multi-Agent Pipeline) ─
   backend_api:
     build:
       context: .
@@ -26,13 +26,59 @@ services:
       - mas_network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
-      interval: 30s
-      timeout: 10s
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
       retries: 5
-      start_period: 60s
+      start_period: 20s
 
-  # ── Frontend UI (Streamlit) ────────────────────────────────
+  # ── Agent 1 (Ingestion Service) ──────────────────────────────
+  ingestion_agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    container_name: mas_ingestion_agent
+    environment:
+      - AGENT_TYPE=IngestionAgent
+      - BACKEND_URL=http://backend_api:8000
+    networks:
+      - mas_network
+    depends_on:
+      - backend_api
+    restart: unless-stopped
+
+  # ── Agent 2 (Analysis Service) ────────────────────────────────
+  analysis_agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    container_name: mas_analysis_agent
+    environment:
+      - AGENT_TYPE=AnalysisAgent
+      - BACKEND_URL=http://backend_api:8000
+    networks:
+      - mas_network
+    depends_on:
+      - backend_api
+    restart: unless-stopped
+
+  # ── Agent 3 (Report & LLM Service) ────────────────────────────
+  report_agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    container_name: mas_report_agent
+    environment:
+      - AGENT_TYPE=ReportAgent
+      - OLLAMA_BASE_URL=http://ollama_service:11434
+      - BACKEND_URL=http://backend_api:8000
+    networks:
+      - mas_network
+    depends_on:
+      - backend_api
+    restart: unless-stopped
+
+  # ── Frontend UI (Streamlit Dashboard) ─────────────────────────
   frontend_ui:
     build:
       context: .
@@ -48,12 +94,12 @@ services:
       - OLLAMA_BASE_URL=http://ollama_service:11434
     depends_on:
       backend_api:
-        condition: service_started
+        condition: service_healthy
     networks:
       - mas_network
     restart: unless-stopped
 
-  # ── Ollama Service (Local LLM) ────────────────────────────
+  # ── Ollama Service (Local LLM) ────────────────────────────────
   ollama_service:
     image: ollama/ollama:latest
     container_name: mas_ollama
@@ -66,10 +112,61 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1"]
-      interval: 30s
-      timeout: 10s
+      interval: 15s
+      timeout: 5s
       retries: 5
-      start_period: 120s
+      start_period: 10s
+
+  # ── Ollama Model Auto-Pull Helper Service ────────────────────
+  ollama_pull:
+    image: curlimages/curl:latest
+    container_name: mas_ollama_pull
+    depends_on:
+      ollama_service:
+        condition: service_healthy
+    networks:
+      - mas_network
+    entrypoint: >
+      /bin/sh -c "
+      echo 'Downloading phi3:mini local LLM model...' &&
+      curl -X POST http://ollama_service:11434/api/pull -d '{\"name\": \"phi3:mini\"}' &&
+      echo 'Ollama phi3:mini model successfully pulled!'
+      "
+    restart: "no"
+
+  # ── Prometheus (Metrics Scraper) ─────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: mas_prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    networks:
+      - mas_network
+    depends_on:
+      - backend_api
+    restart: unless-stopped
+
+  # ── Grafana (Observability Dashboard) ─────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: mas_grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards/json:ro
+    networks:
+      - mas_network
+    depends_on:
+      - prometheus
+    restart: unless-stopped
 
 # ── Networks ─────────────────────────────────────────────────
 networks:

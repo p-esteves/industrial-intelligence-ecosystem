@@ -52,7 +52,12 @@ class Settings(BaseSettings):
 
     # ── Paths ───────────────────────────────────────────────────
     data_dir: str = "./data"
+    sample_dir: str = "./data/sample"
     faiss_index_dir: str = "./data/.faiss_index"
+
+    # ── Anomaly Detection Thresholds ─────────────────────────────
+    anomaly_zscore_threshold: float = 2.0
+    anomaly_iqr_threshold: float = 1.5
 
     # ── Logging ─────────────────────────────────────────────────
     log_level: str = "INFO"
@@ -74,8 +79,13 @@ class Settings(BaseSettings):
 
     @property
     def docs_dir(self) -> str:
-        """Path to the directory where PDF documents are stored."""
+        """Path to the directory where PDF/text documents are stored."""
         return f"{self.data_dir}/docs"
+
+    @property
+    def sample_docs_dir(self) -> str:
+        """Path to sample industrial documentation."""
+        return f"{self.sample_dir}/docs"
 
 
 @lru_cache(maxsize=1)
@@ -85,3 +95,4 @@ def get_settings() -> Settings:
     This ensures settings are loaded only once from disk.
     """
     return Settings()
+

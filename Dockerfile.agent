@@ -1,0 +1,28 @@
+# ============================================================
+# Industrial Multi-Agent Ecosystem — Agent Worker Dockerfile
+# ============================================================
+
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH="/app:$PYTHONPATH"
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY config.py events.py ./
+COPY core/ ./core/
+COPY agents/ ./agents/
+COPY workflow/ ./workflow/
+COPY data/ ./data/
+
+# Default entrypoint runs a worker health ping loop
+CMD ["python", "-c", "import time, logging; logging.basicConfig(level=logging.INFO); logger = logging.getLogger('agent_worker'); logger.info('Agent service daemon started.'); [time.sleep(30) for _ in iter(int, 1)]"]

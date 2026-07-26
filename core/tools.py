@@ -105,67 +105,90 @@ def query_industrial_sql(question: str) -> str:
 
 def retrieve_documents(question: str) -> str:
     """
-    Search indexed industrial documents using semantic retrieval (RAG).
-    Looks at uploaded PDF filenames or simulated document passages.
+    Search indexed industrial documents using dynamic semantic vector retrieval (RAG).
+    Indexes text, markdown, and PDF documents from data/sample/docs and data/docs.
     """
     settings = get_settings()
-    docs_dir = Path(settings.docs_dir)
-    pdf_files = list(docs_dir.glob("*.pdf"))
+    doc_paths: list[Path] = []
 
-    pdf_names = [f.name for f in pdf_files]
-    doc_context = ""
-    if pdf_names:
-        doc_context = f"Relatórios indexados no sistema: {', '.join(pdf_names)}. "
-    else:
-        doc_context = "Relatório Setorial CNI e boletins do Centro de Inteligência Industrial. "
+    for folder in [settings.docs_dir, settings.sample_docs_dir, settings.sample_dir]:
+        p = Path(folder)
+        if p.exists():
+            for ext in ("*.txt", "*.pdf", "*.md"):
+                doc_paths.extend(list(p.glob(ext)))
 
-    # High-quality semantic responses based on keywords in the query to synthesize qualitative reasons
-    q_lower = question.lower()
-    if "construção" in q_lower or "construcao" in q_lower:
-        insights = (
-            "O setor de Construção Civil enfrenta pressões de custos com materiais (aço e cimento), "
-            "mas apresenta resiliência devido a programas de habitação popular e infraestrutura. "
-            "A manutenção da taxa Selic em patamares elevados (10.50%) impacta negativamente "
-            "o financiamento imobiliário de médio e alto padrão, limitando o cenário Otimista. "
-            "Contudo, a escassez de mão de obra qualificada tem elevado os salários médios admissionais."
-        )
-    elif "transformação" in q_lower or "transformacao" in q_lower:
-        insights = (
-            "A Indústria de Transformação mostra recuperação desigual. O setor automotivo e o de alimentos "
-            "lideram os saldos positivos, enquanto a indústria metalúrgica enfrenta dificuldades devido à concorrência "
-            "de importados chineses. O câmbio oscilando em torno de R$ 5.15 estimula as exportações, mas encarece "
-            "insumos importados de tecnologia. Há uma tendência de modernização (Indústria 4.0) influenciando "
-            "as projeções estatísticas positivas de contratação técnica."
-        )
-    elif "extrativa" in q_lower:
-        insights = (
-            "A indústria Extrativa Mineral mantém forte correlação com o preço das commodities minerais (minério de ferro) "
-            "no mercado asiático. O cenário Base assume estabilidade nos embarques marítimos, com o câmbio favorecendo "
-            "a receita operacional das mineradoras brasileiras. O investimento em mitigação de riscos socioambientais "
-            "ocupa parcela significativa dos custos setoriais."
-        )
-    else:
-        insights = (
-            "O panorama industrial de 2024 demonstra crescimento moderado sustentado pelo consumo das famílias e "
-            "massa salarial aquecida. O mercado de trabalho formal continua gerando saldos positivos, embora em "
-            "ritmo mais brando. A inflação controlada (IPCA ~4.23%) dá estabilidade ao poder de compra, "
-            "ancorando as estimativas salariais nos cenários macroeconômicos simulados."
-        )
+    # Remove duplicates
+    doc_paths = list({p.resolve(): p for p in doc_paths}.values())
 
-    # Let's check if we can perform a real LlamaIndex query
-    # If pdf_files exist, we'll try to index them dynamically to show off real LlamaIndex capabilities!
-    if pdf_files:
-        try:
-            from llama_index.core import VectorStoreIndex, SimpleDirectoryReader
-            documents = SimpleDirectoryReader(str(docs_dir)).load_data()
-            index = VectorStoreIndex.from_documents(documents)
-            query_engine = index.as_query_engine()
-            real_response = query_engine.query(question)
-            return f"[RAG Document Retrieval] {doc_context}\n\nConclusões principais (Extraídas do PDF):\n{real_response}\n\nContexto geral:\n{insights}"
-        except Exception as exc:
-            logger.warning(f"Failed to query via LlamaIndex dynamically: {exc}. Using fallback semantic context.")
+    if not doc_paths:
+        return "Nenhum documento vetorial encontrado no diretório RAG."
 
-    return f"[RAG Document Retrieval] {doc_context}\n\nConclusões principais:\n{insights}"
+    logger.info("Building dynamic vector retrieval index", extra={"documents_found": len(doc_paths)})
+
+    # 1. Attempt LlamaIndex VectorStoreIndex Retrieval
+    try:
+        from llama_index.core import VectorStoreIndex, Document
+        raw_docs: list[Document] = []
+        for path in doc_paths:
+            if path.suffix.lower() == ".pdf":
+                try:
+                    from llama_index.readers.file import PDFReader
+                    reader = PDFReader()
+                    pages = reader.load_data(path)
+                    raw_docs.extend(pages)
+                except Exception:
+                    pass
+            else:
+                with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                    text = f.read()
+                    if text.strip():
+                        raw_docs.append(Document(text=text, metadata={"filename": path.name}))
+
+        if raw_docs:
+            index = VectorStoreIndex.from_documents(raw_docs)
+            retriever = index.as_retriever(similarity_top_k=3)
+            nodes = retriever.retrieve(question)
+            matched_passages = [node.get_content() for node in nodes if node.get_content()]
+            if matched_passages:
+                return "[RAG LlamaIndex Vector Output]:\n" + "\n\n---\n\n".join(matched_passages)
+    except Exception as exc:
+        logger.warning(f"LlamaIndex vector build skipped ({exc}). Using TF-IDF vector similarity search.")
+
+    # 2. Dynamic Vector Similarity Search (TF-IDF + Cosine Similarity) over Document Chunks
+    chunks: list[str] = []
+    for path in doc_paths:
+        if path.suffix.lower() != ".pdf":
+            try:
+                with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                    text = f.read()
+                    paras = [p.strip() for p in text.split("\n\n") if len(p.strip()) > 30]
+                    chunks.extend(paras)
+            except Exception:
+                pass
+
+    if not chunks:
+        return "Nenhum trecho textual extraído dos documentos RAG."
+
+    try:
+        from sklearn.feature_extraction.text import TfidfVectorizer
+        from sklearn.metrics.pairwise import cosine_similarity
+
+        vectorizer = TfidfVectorizer(ngram_range=(1, 2)).fit(chunks + [question])
+        doc_vectors = vectorizer.transform(chunks)
+        query_vector = vectorizer.transform([question])
+        scores = cosine_similarity(query_vector, doc_vectors)[0]
+
+        top_indices = scores.argsort()[::-1][:3]
+        top_chunks = [chunks[i] for i in top_indices if scores[i] > 0.01]
+
+        if top_chunks:
+            return "[RAG Vector Similarity Search]:\n" + "\n\n---\n\n".join(top_chunks)
+        else:
+            return f"[RAG Vector Similarity Search]:\n{chunks[top_indices[0]]}"
+    except Exception as exc:
+        logger.warning(f"TF-IDF vector search error: {exc}")
+        return "\n\n---\n\n".join(chunks[:2])
+
 
 
 def forecast_insight(setor: str, horizonte_meses: int = 6) -> str:

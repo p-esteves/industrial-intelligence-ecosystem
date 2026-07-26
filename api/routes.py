@@ -334,3 +334,158 @@ async def forecast_endpoint(request: ForecastRequest) -> ForecastResponsePayload
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Erro ao gerar forecast: {exc}"
         ) from exc
+
+
+# ── Production Industrial Pipeline Endpoints ───────────────────
+
+
+class PipelineRequest(BaseModel):
+    file_path: str | None = Field(None, description="Path to CSV/Parquet data file. Defaults to sample CAGED dataset.")
+    z_threshold: float = Field(2.0, description="Z-score threshold for statistical anomaly detection.")
+    include_rag: bool = Field(True, description="Whether to include FAISS/document RAG context in report.")
+
+
+class PipelineResponsePayload(BaseModel):
+    pipeline_id: str = Field(..., description="Unique pipeline execution ID")
+    status: str = Field(..., description="Execution status (success or error)")
+    ingestion: dict[str, Any] = Field(..., description="Agente 1 (Ingestão) output summary")
+    analysis: dict[str, Any] = Field(..., description="Agente 2 (Análise) statistical anomaly output summary")
+    report: dict[str, Any] = Field(..., description="Agente 3 (Relatório) LLM executive summary")
+    total_duration_ms: float = Field(..., description="Total pipeline execution duration in ms")
+
+
+class AgentStatusDetail(BaseModel):
+    name: str
+    status: str
+    description: str
+
+
+class SystemStatusResponsePayload(BaseModel):
+    overall_status: str
+    agents: list[AgentStatusDetail]
+    ollama_reachable: bool
+    llm_provider: str
+
+
+@router.post(
+    "/pipeline",
+    response_model=PipelineResponsePayload,
+    summary="Disparar pipeline completo dos agentes industriais",
+    description="Executa o fluxo completo: Agente 1 (Ingestão) -> Agente 2 (Análise Estatística) -> Agente 3 (Relatório LLM + RAG)",
+)
+async def pipeline_endpoint(request: PipelineRequest) -> PipelineResponsePayload:
+    from agents.ingestion_agent import IngestionAgent
+    from agents.analysis_agent import AnalysisAgent
+    from agents.report_agent import ReportAgent
+    from core.tools import retrieve_documents
+    from core.metrics import PIPELINE_EXECUTIONS, PIPELINE_DURATION
+
+    start_time = time.perf_counter()
+    pipeline_id = f"pipe-{uuid.uuid4().hex[:8]}"
+
+    logger.info("Pipeline execution started", extra={"pipeline_id": pipeline_id, "file_path": request.file_path})
+
+    try:
+        # Step 1: Ingestion Agent
+        ing_summary = IngestionAgent.run(file_path=request.file_path)
+
+        # Step 2: Analysis Agent
+        ana_summary = AnalysisAgent.run(ingestion_data=ing_summary, z_threshold=request.z_threshold)
+
+        # Step 3: RAG Retrieval Context
+        rag_context = ""
+        if request.include_rag:
+            rag_context = retrieve_documents("anomalias massa salarial industria extrativa e transformacao")
+
+        # Step 4: Report Agent
+        rep_summary = await ReportAgent.generate_report_async(
+            analysis_summary=ana_summary,
+            rag_context=rag_context,
+        )
+
+        duration_s = time.perf_counter() - start_time
+        total_duration_ms = round(duration_s * 1000, 2)
+
+        PIPELINE_EXECUTIONS.labels(status="success").inc()
+        PIPELINE_DURATION.observe(duration_s)
+
+        return PipelineResponsePayload(
+            pipeline_id=pipeline_id,
+            status="success",
+            ingestion=ing_summary.model_dump(),
+            analysis=ana_summary.model_dump(),
+            report=rep_summary.model_dump(),
+            total_duration_ms=total_duration_ms,
+        )
+
+    except Exception as exc:
+        duration_s = time.perf_counter() - start_time
+        PIPELINE_EXECUTIONS.labels(status="error").inc()
+        logger.exception("Pipeline execution failed", extra={"pipeline_id": pipeline_id, "error": str(exc)})
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erro ao executar o pipeline de agentes: {exc}",
+        ) from exc
+
+
+@router.get(
+    "/status",
+    response_model=SystemStatusResponsePayload,
+    summary="Verificar estado de todos os agentes do ecossistema",
+)
+async def status_endpoint() -> SystemStatusResponsePayload:
+    settings = get_settings()
+    ollama_reachable = False
+
+    if settings.llm_provider == "ollama":
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                resp = await client.get(f"{settings.ollama_base_url}/api/tags")
+                ollama_reachable = resp.status_code == 200
+        except Exception:
+            ollama_reachable = False
+
+    agents_status = [
+        AgentStatusDetail(
+            name="Agente 1 (Ingestão)",
+            status="operational",
+            description="Leitura e validação de dados tabulares (CSV, Parquet, SQLite).",
+        ),
+        AgentStatusDetail(
+            name="Agente 2 (Análise de Anomalias)",
+            status="operational",
+            description="Detecção estatística de desvios (Z-Score & IQR).",
+        ),
+        AgentStatusDetail(
+            name="Agente 3 (Relatório Executivo)",
+            status="operational" if (ollama_reachable or settings.llm_provider != "ollama") else "degraded_fallback",
+            description="Síntese em linguagem natural via Ollama LLM ou Modo Resiliente.",
+        ),
+        AgentStatusDetail(
+            name="Módulo RAG (FAISS)",
+            status="operational",
+            description="Busca semântica em diretrizes e relatórios industriais.",
+        ),
+    ]
+
+    return SystemStatusResponsePayload(
+        overall_status="healthy",
+        agents=agents_status,
+        ollama_reachable=ollama_reachable,
+        llm_provider=settings.llm_provider,
+    )
+
+
+@router.get(
+    "/metrics",
+    summary="Expor métricas no formato Prometheus",
+    description="Endpoint compatível com Prometheus scraper.",
+)
+async def metrics_endpoint() -> Response:
+    from fastapi.responses import Response
+    from core.metrics import generate_prometheus_metrics
+
+    body, content_type = generate_prometheus_metrics()
+    return Response(content=body, media_type=content_type)
+

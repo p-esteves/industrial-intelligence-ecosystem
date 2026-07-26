@@ -14,7 +14,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from api.routes import router
+from api.routes import router, PipelineRequest
 from config import get_settings
 from core.logging_config import setup_logging
 
@@ -157,7 +157,7 @@ async def request_logging_middleware(
 app.include_router(router)
 
 
-# ── Root Endpoint ──────────────────────────────────────────────
+# ── Root & Convenience Endpoints ─────────────────────────────
 
 
 @app.get("/", tags=["Root"])
@@ -167,5 +167,33 @@ async def root() -> dict[str, str]:
         "service": "Industrial Multi-Agent Ecosystem",
         "version": "1.0.0",
         "docs": "/docs",
-        "health": "/api/v1/health",
+        "health": "/health",
+        "pipeline": "/pipeline",
+        "status": "/status",
+        "metrics": "/metrics",
     }
+
+
+@app.get("/health", tags=["Root"], summary="Kubernetes Health Probe")
+async def top_level_health():
+    from api.routes import health_endpoint
+    return await health_endpoint()
+
+
+@app.get("/status", tags=["Root"], summary="System & Agents Status")
+async def top_level_status():
+    from api.routes import status_endpoint
+    return await status_endpoint()
+
+
+@app.post("/pipeline", tags=["Root"], summary="Run Multi-Agent Pipeline")
+async def top_level_pipeline(request: PipelineRequest):
+    from api.routes import pipeline_endpoint
+    return await pipeline_endpoint(request)
+
+
+@app.get("/metrics", tags=["Root"], summary="Prometheus Metrics")
+async def top_level_metrics():
+    from api.routes import metrics_endpoint
+    return await metrics_endpoint()
+

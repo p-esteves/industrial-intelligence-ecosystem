@@ -1,0 +1,20 @@
+MANUAL DE DIRETRIZES E ANÁLISE DE ANOMALIAS NA INDÚSTRIA BRASILEIRA (CAGED / IBGE)
+
+1. VISÃO GERAL DE INDICADORES INDUSTRIAIS
+A massa salarial e a movimentação de postos de trabalho formais (admissões vs desligamentos) são os indicadores primários de atividade produtiva na indústria brasileira. Variações estatísticas abruptas no saldo de empregos ou na massa salarial total indicam choques estruturais, operacionais ou sazonais.
+
+2. SETOR DE EXTRATIVA MINERAL
+- Características: Alta intensidade de capital, fortemente impactado pela demanda de commodities minerais no mercado externo (ex: minério de ferro, bauxita, cobre) e por restrições de licenciamento ambiental.
+- Anomalias Típicas: Quedas bruscas na massa salarial (superiores a 30%) em estados mineradores como Minas Gerais (MG) e Pará (PA) costumam decorrer de paralisações operacionais temporárias em barragens, manutenção corretiva severa de infraestrutura logísticas (ferrovias/portos), ou flutuações na cotação do minério no mercado internacional.
+
+3. INDÚSTRIA DE TRANSFORMAÇÃO
+- Características: Maior empregadora do setor industrial, altamente sensível à taxa de juros (Selic), disponibilidade de crédito corporativo, custo de energia elétrica e gargalos em cadeias globais de suprimento.
+- Anomalias Típicas: Onda severa de desligamentos (saldo negativo agudo superior a 5.000 postos em polos como SP e RS) sinaliza retração na demanda consumidora, encerramento de turnos fabris, aumento do endividamento das montadoras/metalúrgicas ou substituição tecnológica acelerada.
+
+4. CONSTRUÇÃO CIVIL
+- Características: Indicador antecedente do ciclo econômico. Sensível à taxa Selic e financiamento imobiliário.
+- Anomalias Típicas: Picos de demissões costumam ocorrer com a conclusão de grandes obras de infraestrutura urbana ou descontinuidade de contratos de concessão pública.
+
+5. PROCEDIMENTO DE RECOMENDAÇÃO DE MITIGAÇÃO
+- Para desocupação aguda na Indústria de Transformação: Recomenda-se incentivos tributários temporários (crédito presumido), renegociação de passivos tributários e qualificação da mão de obra.
+- Para paralisação na Extrativa Mineral: Foco em aceleração de licenciamento de mitigação ambiental, modernização de processos de segurança e flexibilização de acordos coletivos de trabalho.

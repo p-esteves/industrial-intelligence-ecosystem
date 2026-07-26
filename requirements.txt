@@ -31,12 +31,18 @@ llama-index-vector-stores-faiss>=0.6.0
 # --- Vector Search ---
 faiss-cpu>=1.9.0
 
-# --- Database ---
+# --- Database & Storage ---
 sqlalchemy>=2.0.0
+pyarrow>=15.0.0
 
-# --- Frontend & Analysis ---
+# --- Frontend, Analysis & Statistics ---
 streamlit>=1.41.0
 pandas>=2.0.0
+scipy>=1.11.0
 requests>=2.32.0
 nest-asyncio>=1.6.0
 tenacity>=8.2.0
+
+# --- Observability ---
+prometheus-client>=0.20.0
+
