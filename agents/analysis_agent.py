@@ -48,7 +48,8 @@ class AnalysisSummary(BaseModel):
 
 class AnalysisAgent:
     """
-    Agente 2 (Análise): Detecta anomalias estatísticas nos dados industriais.
+    Analysis Agent: Detects statistical anomalies in industrial employment data
+    using Z-Score and IQR algorithms across sector and state groupings.
     """
 
     @classmethod

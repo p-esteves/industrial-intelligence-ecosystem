@@ -50,7 +50,7 @@ class IngestionAgent:
             file_path = f"{settings.sample_dir}/caged_industrial.csv"
             path = Path(file_path)
             if not path.exists():
-                fallback_sqlite = f"{settings.data_dir}/mock_caged.db"
+                fallback_sqlite = f"{settings.data_dir}/caged_synthetic.db"
                 if Path(fallback_sqlite).exists():
                     file_path = fallback_sqlite
                     path = Path(file_path)

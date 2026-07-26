@@ -21,7 +21,7 @@
 
 O **Industrial Intelligence Ecosystem** é uma plataforma multi-agente containerizada para monitoramento, análise estatística e geração de inteligência sobre indicadores da indústria brasileira (como dados do CAGED/IBGE). 
 
-Projetado para ambientes de alta disponibilidade compatíveis com **Azure AKS (Azure Kubernetes Service)**, **Docker Compose** e **Arquitetura de Microserviços**, o sistema executa um fluxo autônomo end-to-end de 3 agentes especializados com observabilidade completa via **Prometheus + Grafana** e suporte a **LLM 100% local via Ollama** com **Graceful Degradation (Modo Resiliente / Fallback)**.
+Projetado para ambientes de alta disponibilidade compatíveis com **Azure AKS (Azure Kubernetes Service)**, **Docker Compose** e **Arquitetura de Microserviços**, o sistema executa um fluxo autônomo end-to-end de **6 agentes especializados** orquestrados via **LlamaIndex Workflows** (event-driven), com observabilidade completa via **Prometheus + Grafana** e suporte a **LLM 100% local via Ollama** com **Graceful Degradation**.
 
 ---
 
@@ -55,7 +55,7 @@ docker-compose up --build -d
 
 ## 🏗️ Arquitetura do Sistema Multi-Agente
 
-Abaixo está o diagrama em **Mermaid** representando o fluxo completo entre o cliente REST, a API FastAPI, os Agentes Independentes, a busca vetorial FAISS RAG, o LLM local via Ollama e a stack de observabilidade com Prometheus e Grafana:
+O sistema utiliza **LlamaIndex Workflows** para orquestração event-driven de 6 agentes especializados com execução paralela, loop de auto-correção e auditoria híbrida (programática + semântica):
 
 ```mermaid
 flowchart TD
@@ -71,14 +71,21 @@ flowchart TD
         GETM["GET /metrics"]
     end
 
-    subgraph Pipeline ["Multi-Agent Pipeline"]
-        A1["Agente 1: Ingestão\n(Leitura CSV/Parquet)"]
-        A2["Agente 2: Análise Estatística\n(Detecção Z-Score & IQR)"]
-        A3["Agente 3: Relatório Executivo\n(Síntese LLM + RAG)"]
-        RAG["Módulo RAG\n(FAISS Vector Index)"]
+    subgraph Orchestration ["LlamaIndex Workflow Engine"]
+        ORCH["🎯 OrchestratorAgent\n(Planning & Parameter Extraction)"]
     end
 
-    subgraph LocalLLM ["Local LLM Service :11434"]
+    subgraph Specialists ["Parallel Specialist Agents"]
+        SQL["🗄️ SQLSpecialistAgent\n(Text-to-SQL CAGED/IBGE)"]
+        RAG["📚 RAGSpecialistAgent\n(FAISS / TF-IDF Vector Search)"]
+        FORE["📈 ForecastSpecialistAgent\n(Scenario Projection)"]
+    end
+
+    subgraph QA ["Quality Assurance"]
+        AUDIT["⚖️ ConsistencyAuditorAgent\n(Hybrid Programmatic + LLM Validation)"]
+    end
+
+    subgraph LLM ["LLM Service :11434"]
         OLLAMA["Ollama Container\n(phi3:mini / llama3)"]
         FALLBACK["Deterministic Fallback\n(Graceful Degradation)"]
     end
@@ -91,47 +98,73 @@ flowchart TD
     CLI -->|HTTP Payload| POSTP
     STUI -->|HTTP Payload| POSTP
 
-    POSTP --> A1
-    A1 -->|Summary & Records| A2
-    A2 -->|Anomalies Identified| A3
-    RAG -->|Domain Context| A3
+    POSTP --> ORCH
+    ORCH -->|"Parallel Events"| SQL
+    ORCH -->|"Parallel Events"| RAG
+    ORCH -->|"Parallel Events"| FORE
 
-    A3 -->|Attempt LLM Call| OLLAMA
+    SQL -->|SQLResultEvent| AUDIT
+    RAG -->|RAGResultEvent| AUDIT
+    FORE -->|ForecastResultEvent| AUDIT
+
+    AUDIT -->|"✅ Approved"| POSTP
+    AUDIT -.->|"❌ Rejected + Feedback"| SQL
+    AUDIT -.->|"❌ Rejected + Feedback"| FORE
+
+    SQL -->|LLM Call| OLLAMA
+    RAG -->|LLM Call| OLLAMA
+    FORE -->|LLM Call| OLLAMA
+    AUDIT -->|LLM Synthesis| OLLAMA
     OLLAMA -.->|Timeout / Error| FALLBACK
-    FALLBACK -->|Resilient Executive Report| A3
-    OLLAMA -->|Natural Language Insights| A3
 
     GETM -->|Scrape Metrics| PROM
     PROM -->|Datasource| GRAF
 ```
 
+### 🔄 Fluxo de Auto-Correção (Self-Healing Loop)
+
+O `ConsistencyAuditorAgent` executa **validação programática determinística** (checagem matemática, consistência de setores, detecção de contradições lógicas entre tendências) **antes** de usar o LLM para síntese final. Se alguma validação falhar, o workflow **retorna automaticamente** os eventos com feedback corretivo para os agentes especialistas (até 5 iterações), garantindo convergência e eliminação de alucinações.
+
 ---
 
 ## 👥 Agentes Especialistas e Responsabilidades
 
-### 1. 📥 Agente 1: Ingestão (`agents/ingestion_agent.py`)
-- **Função**: Carrega, valida e converte dados tabulares industriais dos formatos **CSV**, **Parquet** e **SQLite**.
-- **Validação**: Valida esquemas de colunas obrigatórias (`uf`, `setor`, `mes_ano`, `admissoes`, `desligamentos`, `saldo`, `massa_salarial`, `salario_medio`).
-- **Observabilidade**: Emite logs estruturados JSON e registra a métrica `industrial_agent_execution_duration_seconds{agent="IngestionAgent"}`.
+### 1. 🎯 OrchestratorAgent (`agents/orchestrator.py`)
+- **Função**: Analisa a pergunta do economista em linguagem natural e extrai parâmetros estruturados (UF, Setor, Horizonte de Projeção) usando o LLM.
+- **Saída**: Plano de execução com subtarefas e parâmetros extraídos, disparando eventos paralelos para os 3 agentes especialistas.
 
-### 2. 📊 Agente 2: Análise Estatística (`agents/analysis_agent.py`)
-- **Função**: Executa algoritmos estatísticos de detecção de anomalias baseados em **Z-Score** ($Z = \frac{X - \mu}{\sigma}$) e **Interquartile Range (IQR)** sobre a massa salarial e movimentação de postos por estado (UF) e setor.
-- **Saída**: Retorna um sumário de anomalias classificadas por severidade (`CRITICAL`, `HIGH`, `MEDIUM`) identificando quedas abruptas de massa salarial e surtos imprevistos de demissões.
-- **Métricas**: Incrementa o contador Prometheus `industrial_anomalies_detected_total{sector=..., severity=...}`.
+### 2. 🗄️ SQLSpecialistAgent (`agents/sql_specialist.py`)
+- **Função**: Traduz a consulta do usuário em SQL válido (Text-to-SQL) e executa contra a base CAGED/IBGE, retornando registros históricos de admissões, desligamentos, saldo e salário médio.
+- **Proteção**: Write-protection ativa (rejeita INSERT/UPDATE/DELETE/DROP).
+- **Análise de Tendência**: Calcula programaticamente se a tendência dos dados é de crescimento, queda ou estabilidade.
 
-### 3. 📝 Agente 3: Relatório Executivo & Fallback (`agents/report_agent.py`)
-- **Função**: Sintetiza relatórios em linguagem natural integrando os desvios encontrados pelo Agente 2 com o contexto qualitativo recuperado via RAG.
-- **Integração LLM**: Conecta ao serviço local Ollama (`phi3:mini` ou `llama3`).
-- **Graceful Degradation (Modo Resiliente)**: Caso o container do Ollama esteja indisponível, reiniciando ou indisponível por timeout, o agente aciona automaticamente um gerador de relatório determinístico baseado em regras corporativas sem derrubar a API (retornando HTTP 200) e incrementando `industrial_llm_fallback_total`.
+### 3. 📚 RAGSpecialistAgent (`agents/rag_specialist.py` + `core/tools.py`)
+- **Função**: Executa busca vetorial semântica sobre documentos industriais indexados (via **LlamaIndex VectorStoreIndex** ou fallback **TF-IDF + Cosine Similarity**) e extrai entidades estruturadas (fator macroeconômico dominante, impacto qualitativo).
+- **Documentos Indexados**: Manuais, boletins e relatórios setoriais em `data/sample/docs/`.
 
-### 🔍 Módulo RAG Vetorial (`agents/rag_specialist.py` + `core/tools.py`)
-- **Função**: Indexa manuais técnicos e boletins industriais localizados em `data/sample/docs/` utilizando a biblioteca **FAISS** e **LlamaIndex**, alimentando o Agente 3 com diretrizes setoriais pertinentes.
+### 4. 📈 ForecastSpecialistAgent (`agents/forecast_specialist.py`)
+- **Função**: Gera projeções de massa salarial e empregados sob 3 cenários macroeconômicos (Pessimista, Base, Otimista) com variáveis de contorno (Selic, IPCA, câmbio, PIB, confiança industrial FGV).
+- **Auto-Correção**: Se o `ConsistencyAuditorAgent` detectar contradição lógica (ex: histórico em queda mas projeção em crescimento), o Forecast ajusta dinamicamente os cenários aplicando decaimento proporcional.
+- **Justificativa para Economistas**: Usa o LLM para gerar uma justificativa técnica do modelo econométrico utilizado (SARIMAX + XGBoost ensemble).
+
+### 5. ⚖️ ConsistencyAuditorAgent (`agents/consistency_auditor.py`)
+- **Função**: Motor de validação híbrido (programático + semântico) que atua como Chief Editor / Quality Assurance do sistema.
+- **Validações Programáticas (Fase 1)**:
+  - Checagem matemática: `admissões - desligamentos == saldo` em todos os registros.
+  - Consistência de setor entre SQL e Forecast.
+  - Detecção de contradição lógica entre tendência SQL, narrativa RAG e projeção Forecast.
+- **Síntese Semântica (Fase 2)**: Se todas as validações passarem, o LLM compila o relatório final em Markdown estruturado com tabelas, cenários e recomendações.
+
+### 6. 📥 IngestionAgent + AnalysisAgent (`agents/ingestion_agent.py` + `agents/analysis_agent.py`)
+- **Ingestão**: Carrega, valida e converte dados tabulares industriais dos formatos **CSV**, **Parquet** e **SQLite**.
+- **Análise Estatística**: Executa detecção de anomalias baseada em **Z-Score** ($Z = \frac{X - \mu}{\sigma}$) e **IQR** sobre massa salarial e saldo de empregos, classificando por severidade (`CRITICAL`, `HIGH`, `MEDIUM`).
+- **Observabilidade**: Emite métricas Prometheus (`industrial_anomalies_detected_total`, `industrial_agent_execution_duration_seconds`).
 
 ---
 
 ## 🎯 Caso de Uso Industrial Concreto
 
-O repositório acompanha um conjunto de dados industriais sintéticos realistas simulando o **CAGED (Cadastro Geral de Empregados e Desempregados)** e indicadores do IBGE localizados na pasta `/data/sample/`:
+O repositório acompanha um conjunto de dados industriais sintéticos simulando o **CAGED (Cadastro Geral de Empregados e Desempregados)** e indicadores do IBGE localizados na pasta `/data/sample/`:
 
 - `data/sample/caged_industrial.csv`: Dados de movimentação de empregos formais e massa salarial.
 - `data/sample/caged_industrial.parquet`: Versão em formato Parquet para alta performance de leitura.
@@ -164,11 +197,13 @@ Ao subir o `docker-compose up`, o Grafana é autoprovisionado na porta `3000` co
 
 | Tecnologia | Decisão Técnica & Rationale |
 | :--- | :--- |
+| **LlamaIndex Workflows** | Framework de orquestração event-driven que permite execução paralela de agentes, coleta de resultados e loops de auto-correção com tipagem forte (Pydantic Events). |
 | **FastAPI** | Framework Python assíncrono de altíssimo desempenho, nativamente compatível com Pydantic v2 e documentação Swagger automática. |
 | **Ollama** | Servidor de inferência LLM local e open-source. Permite rodar modelos como Phi-3 ou Llama 3 on-premises com zero custo e total privacidade de dados. |
-| **FAISS** | Biblioteca de busca vetorial densa desenvolvida pelo Meta AI. Oferece buscas semânticas ultra-rápidas para RAG industrial sem dependência de serviços pagos. |
+| **FAISS + TF-IDF** | Busca vetorial densa (LlamaIndex VectorStoreIndex) com fallback para TF-IDF + Cosine Similarity via scikit-learn, garantindo retrieval funcional mesmo sem GPU. |
 | **Prometheus + Grafana** | Padrão da indústria para monitoramento de microserviços e aplicações cloud-native em clusters Kubernetes. |
 | **Docker Multi-Stage Build** | Garante imagens enxutas, separando a camada de compilação de dependências da imagem final de execução em produção (Python 3.11-slim). |
+| **Tenacity (Retry Policy)** | Todas as chamadas LLM assíncronas usam retry exponencial (3 tentativas) para tolerância a falhas transitórias de rede ou serviço. |
 
 ---
 

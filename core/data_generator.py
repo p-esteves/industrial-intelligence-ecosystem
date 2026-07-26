@@ -1,5 +1,5 @@
 """
-Industrial Multi-Agent Ecosystem — Mock Data Generator.
+Industrial Multi-Agent Ecosystem — Synthetic Data Generator.
 
 Creates a realistic SQLite database with CAGED/IBGE employment data
 and provides forecast scenario generators that simulate XGBoost/Prophet
@@ -47,13 +47,15 @@ PERIODOS: list[str] = [
 ]
 
 
-def init_mock_database() -> Engine:
+def init_database() -> Engine:
     """
-    Create a file-based SQLite database with realistic CAGED/IBGE data.
+    Create a file-based SQLite database with synthetic CAGED/IBGE data.
+    Generates realistic employment records across 10 Brazilian states,
+    6 industrial sectors, and 24 monthly periods (2023-2024).
     """
     import os
     os.makedirs("data", exist_ok=True)
-    engine: Engine = create_engine("sqlite:///data/mock_caged.db", echo=False)
+    engine: Engine = create_engine("sqlite:///data/caged_synthetic.db", echo=False)
     metadata_obj = MetaData()
 
     emprego_formal = Table(
@@ -129,7 +131,7 @@ def init_mock_database() -> Engine:
         total_rows: int = count_result.scalar() or 0
 
     logger.info(
-        "Mock CAGED/IBGE database initialized",
+        "Synthetic CAGED/IBGE database initialized",
         extra={"total_rows": total_rows, "states": len(UFS), "sectors": len(SETORES)},
     )
 

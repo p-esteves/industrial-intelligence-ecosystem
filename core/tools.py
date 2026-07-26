@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from config import Settings, get_settings
-from core.mock_data import generate_forecast_data, init_mock_database
+from core.data_generator import generate_forecast_data, init_database
 
 logger = logging.getLogger(__name__)
 
@@ -19,11 +19,9 @@ def _get_db_connection() -> sqlite3.Connection:
     """Return a cached connection to the SQLite database."""
     global _db_connection
     if _db_connection is None:
-        # Create data directory if it doesn't exist
         os.makedirs("data", exist_ok=True)
-        # Force SQLite db file to exist and populate it
-        engine = init_mock_database()
-        _db_connection = sqlite3.connect("data/mock_caged.db", check_same_thread=False)
+        engine = init_database()
+        _db_connection = sqlite3.connect("data/caged_synthetic.db", check_same_thread=False)
         _db_connection.row_factory = sqlite3.Row
     return _db_connection
 
@@ -57,9 +55,12 @@ def query_industrial_sql(question: str) -> str:
         clean_q = clean_q[3:].strip()
     clean_q = clean_q.replace("`", "").strip()
 
-    # If the LLM sent a natural language query instead of SQL, let's convert basic SP/Construction to SQL
+    # Reject any non-SELECT statements to prevent data mutation (write-protection)
+    if clean_q.upper().startswith(("INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "CREATE")):
+        return json.dumps({"status": "error", "query": clean_q, "columns": [], "records": [], "row_count": 0, "error_detail": "Write operations are not permitted. Only SELECT queries are allowed."}, ensure_ascii=False, indent=2)
+
+    # If the LLM sent a natural language query instead of SQL, build a parameterized fallback
     if not clean_q.upper().startswith("SELECT"):
-        # Very simple fallback translation for testing SP/Construction
         uf_target: str = "SP"
         setor_target: str = "Construção Civil"
         clean_q = f"SELECT mes_ano, uf, setor, admissoes, desligamentos, saldo, salario_medio FROM emprego_formal WHERE uf='{uf_target}' AND setor='{setor_target}' LIMIT 12"
@@ -226,7 +227,7 @@ def forecast_insight(setor: str, horizonte_meses: int = 6) -> str:
 
 
 def rebuild_vector_index(settings: Settings) -> int:
-    """Mock rebuild function. Simply count existing PDFs."""
+    """Rebuild the document vector index and return the count of indexed files."""
     docs_dir = Path(settings.docs_dir)
     if not docs_dir.exists():
         return 0

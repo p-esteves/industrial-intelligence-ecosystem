@@ -9,7 +9,7 @@ from core.tools import query_industrial_sql
 
 logger = logging.getLogger(__name__)
 
-# DDL Schema Mock for the Centro de Inteligência database
+# DDL Schema for the Centro de Inteligência CAGED/IBGE database
 DB_SCHEMA_DDL = """
 -- DDL para a Base de Emprego Formal do Centro de Inteligência
 CREATE TABLE emprego_formal (

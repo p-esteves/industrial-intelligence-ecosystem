@@ -33,8 +33,8 @@ class ReportSummary(BaseModel):
 
 class ReportAgent:
     """
-    Agente 3 (Relatório): Gera relatórios em linguagem natural com LLM (Ollama)
-    e suporte a Graceful Degradation caso o Ollama esteja offline.
+    Report Agent: Generates natural language executive reports using LLM (Ollama)
+    with graceful degradation fallback when the LLM service is unavailable.
     """
 
     @classmethod
